@@ -108,13 +108,6 @@ bool IsGoogleLoggingInitialized();
 
 bool is_default_thread();
 
-int64 CycleClock_Now();
-
-int64 UsecToCycles(int64 usec);
-
-typedef double WallTime;
-WallTime WallTime_Now();
-
 int32 GetMainThreadPid();
 bool PidHasChanged();
 

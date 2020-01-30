@@ -195,46 +195,6 @@ bool is_default_thread() {
   }
 }
 
-#ifdef OS_WINDOWS
-struct timeval {
-  long tv_sec, tv_usec;
-};
-
-// Based on: http://www.google.com/codesearch/p?hl=en#dR3YEbitojA/os_win32.c&q=GetSystemTimeAsFileTime%20license:bsd
-// See COPYING for copyright information.
-static int gettimeofday(struct timeval *tv, void* tz) {
-#define EPOCHFILETIME (116444736000000000ULL)
-  FILETIME ft;
-  LARGE_INTEGER li;
-  uint64 tt;
-
-  GetSystemTimeAsFileTime(&ft);
-  li.LowPart = ft.dwLowDateTime;
-  li.HighPart = ft.dwHighDateTime;
-  tt = (li.QuadPart - EPOCHFILETIME) / 10;
-  tv->tv_sec = tt / 1000000;
-  tv->tv_usec = tt % 1000000;
-
-  return 0;
-}
-#endif
-
-int64 CycleClock_Now() {
-  // TODO(hamaji): temporary impementation - it might be too slow.
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  return static_cast<int64>(tv.tv_sec) * 1000000 + tv.tv_usec;
-}
-
-int64 UsecToCycles(int64 usec) {
-  return usec;
-}
-
-WallTime WallTime_Now() {
-  // Now, cycle clock is retuning microseconds since the epoch.
-  return CycleClock_Now() * 0.000001;
-}
-
 static int32 g_main_thread_pid = getpid();
 int32 GetMainThreadPid() {
   return g_main_thread_pid;

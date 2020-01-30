@@ -66,6 +66,7 @@
 #ifdef HAVE_STACKTRACE
 #include "absl/debugging/stacktrace.h"
 #endif
+#include "absl/base/internal/cycleclock.h"
 
 using std::string;
 using std::vector;
@@ -899,9 +900,8 @@ void LogFileObject::FlushUnlocked(){
     bytes_since_flush_ = 0;
   }
   // Figure out when we are due for another flush.
-  const int64 next = (absl::GetFlag(FLAGS_logbufsecs)
-                      * static_cast<int64>(1000000));  // in usec
-  next_flush_time_ = CycleClock_Now() + UsecToCycles(next);
+  const int64 next = static_cast<int64>(absl::GetFlag(FLAGS_logbufsecs) * absl::base_internal::CycleClock::Frequency());
+  next_flush_time_ = absl::base_internal::CycleClock::Now() + next;
 }
 
 bool LogFileObject::CreateLogfile(const string& time_pid_string) {
@@ -1106,7 +1106,7 @@ void LogFileObject::Write(bool force_flush,
       bytes_since_flush_ += message_len;
     }
   } else {
-    if ( CycleClock_Now() >= next_flush_time_ )
+    if ( absl::base_internal::CycleClock::Now() >= next_flush_time_ )
       stop_writing = false;  // check to see if disk has free space.
     return;  // no need to flush
   }
@@ -1115,7 +1115,7 @@ void LogFileObject::Write(bool force_flush,
   // or every "absl::GetFlag(FLAGS_logbufsecs" seconds.
   if ( force_flush ||
        (bytes_since_flush_ >= 1000000) ||
-       (CycleClock_Now() >= next_flush_time_) ) {
+       (absl::base_internal::CycleClock::Now() >= next_flush_time_) ) {
     FlushUnlocked();
 #ifdef OS_LINUX
     // Only consider files >= 3MiB
@@ -1264,10 +1264,9 @@ void LogMessage::Init(const char* file,
   data_->send_method_ = send_method;
   data_->sink_ = NULL;
   data_->outvec_ = NULL;
-  WallTime now = WallTime_Now();
-  data_->timestamp_ = static_cast<time_t>(now);
+  absl::Time now = absl::Now();
+  data_->timestamp_ = absl::ToTimeT(now);
   localtime_r(&data_->timestamp_, &data_->tm_time_);
-  int usecs = static_cast<int>((now - data_->timestamp_) * 1000000);
 
   data_->num_chars_to_log_ = 0;
   data_->num_chars_to_syslog_ = 0;
@@ -1281,13 +1280,7 @@ void LogMessage::Init(const char* file,
   // We exclude the thread_id for the default thread.
   if (absl::GetFlag(FLAGS_log_prefix) && (line != kNoLogPrefix)) {
     stream() << LogSeverityNames[severity][0]
-             << setw(2) << 1+data_->tm_time_.tm_mon
-             << setw(2) << data_->tm_time_.tm_mday
-             << ' '
-             << setw(2) << data_->tm_time_.tm_hour  << ':'
-             << setw(2) << data_->tm_time_.tm_min   << ':'
-             << setw(2) << data_->tm_time_.tm_sec   << "."
-             << setw(6) << usecs
+	     << absl::FormatTime("%m%d %H:%M:%E6S", now, absl::LocalTimeZone())
              << ' '
              << setfill(' ') << setw(5)
              << static_cast<unsigned int>(GetTID()) << setfill('0')
