@@ -41,13 +41,13 @@
 #endif
 #include <fcntl.h>                 // for open()
 #include <time.h>
-#include "config.h"
+
 #include "glog/logging.h"          // To pick up flag settings etc.
 #include "glog/raw_logging.h"
-#include "base/commandlineflags.h"
+#include "absl/flags/flag.h"
 
 #ifdef HAVE_STACKTRACE
-# include "stacktrace.h"
+#include "absl/debugging/stacktrace.h"
 #endif
 
 #if defined(HAVE_SYSCALL_H)

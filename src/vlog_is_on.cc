@@ -39,7 +39,9 @@
 #include <errno.h>
 #include <cstdio>
 #include <string>
-#include "base/commandlineflags.h"
+#include "absl/flags/flag.h"
+#include "absl/synchronization/mutex.h"
+
 #include "glog/logging.h"
 #include "glog/raw_logging.h"
 #include "base/googleinit.h"
@@ -48,11 +50,13 @@
 #define ANNOTATE_BENIGN_RACE(address, description)
 
 using std::string;
+using absl::MutexLock;
 
-GLOG_DEFINE_int32(v, 0, "Show all VLOG(m) messages for m <= this."
-" Overridable by --vmodule.");
+ABSL_FLAG(int32_t, v, 0,
+	  "Show all VLOG(m) messages for m <= this."
+	  " Overridable by --vmodule.");
 
-GLOG_DEFINE_string(vmodule, "", "per-module verbose level."
+ABSL_FLAG(string, vmodule, "", "per-module verbose level."
 " Argument is a comma-separated list of <module name>=<log level>."
 " <module name> is a glob pattern, matched against the filename base"
 " (that is, name ignoring .cc/.h./-inl.h)."
@@ -123,7 +127,7 @@ struct VModuleInfo {
 };
 
 // This protects the following global variables.
-static Mutex vmodule_lock;
+static absl::Mutex vmodule_lock;
 // Pointer to head of the VModuleInfo list.
 // It's a map from module pattern to logging level for those module(s).
 static VModuleInfo* vmodule_list = 0;
@@ -136,7 +140,7 @@ static void VLOG2Initializer() {
   // Can now parse --vmodule flag and initialize mapping of module-specific
   // logging levels.
   inited_vmodule = false;
-  const char* vmodule = FLAGS_vmodule.c_str();
+  const char* vmodule = absl::GetFlag(FLAGS_vmodule).c_str();
   const char* sep;
   VModuleInfo* head = NULL;
   VModuleInfo* tail = NULL;
@@ -165,7 +169,7 @@ static void VLOG2Initializer() {
 
 // This can be called very early, so we use SpinLock and RAW_VLOG here.
 int SetVLOGLevel(const char* module_pattern, int log_level) {
-  int result = FLAGS_v;
+  int result = absl::GetFlag(FLAGS_v);
   int const pattern_len = strlen(module_pattern);
   bool found = false;
   {

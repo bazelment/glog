@@ -72,7 +72,7 @@
 # endif
 #endif
 
-#if defined(__GNUC__)
+#if 0 && defined(__GNUC__)
 // We emit an anonymous static int* variable at every VLOG_IS_ON(n) site.
 // (Normally) the first time every VLOG_IS_ON(n) site is hit,
 // we determine what variable will dynamically control logging at this site:
@@ -90,7 +90,7 @@
 #else
 // GNU extensions not available, so we do not support --vmodule.
 // Dynamic value of FLAGS_v always controls the logging level.
-#define VLOG_IS_ON(verboselevel) (FLAGS_v >= (verboselevel))
+#define VLOG_IS_ON(verboselevel) (absl::GetFlag(FLAGS_v) >= (verboselevel))
 #endif
 
 // Set VLOG(_IS_ON) level for module_pattern to log_level.

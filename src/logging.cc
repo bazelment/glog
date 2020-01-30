@@ -58,13 +58,13 @@
 #include <vector>
 #include <errno.h>                   // for errno
 #include <sstream>
-#include "base/commandlineflags.h"        // to get the program name
+#include "absl/flags/flag.h"  // to get the program name
 #include "glog/logging.h"
 #include "glog/raw_logging.h"
 #include "base/googleinit.h"
 
 #ifdef HAVE_STACKTRACE
-# include "stacktrace.h"
+#include "absl/debugging/stacktrace.h"
 #endif
 
 using std::string;
@@ -84,6 +84,10 @@ using std::fflush;
 using std::fprintf;
 using std::perror;
 
+using absl::MutexLock;
+using absl::Mutex;
+using absl::ReaderMutexLock;
+
 #ifdef __QNX__
 using std::fdopen;
 #endif
@@ -91,9 +95,6 @@ using std::fdopen;
 #ifdef _WIN32
 #define fdopen _fdopen
 #endif
-
-// There is no thread annotation support.
-#define EXCLUSIVE_LOCKS_REQUIRED(mu)
 
 static bool BoolFromEnv(const char *varname, bool defval) {
   const char* const valstr = getenv(varname);
@@ -103,14 +104,15 @@ static bool BoolFromEnv(const char *varname, bool defval) {
   return memchr("tTyY1\0", valstr[0], 6) != NULL;
 }
 
-GLOG_DEFINE_bool(logtostderr, BoolFromEnv("GOOGLE_LOGTOSTDERR", false),
-                 "log messages go to stderr instead of logfiles");
-GLOG_DEFINE_bool(alsologtostderr, BoolFromEnv("GOOGLE_ALSOLOGTOSTDERR", false),
-                 "log messages go to stderr in addition to logfiles");
-GLOG_DEFINE_bool(colorlogtostderr, false,
-                 "color messages logged to stderr (if supported by terminal)");
+ABSL_FLAG(bool,logtostderr, BoolFromEnv("GOOGLE_LOGTOSTDERR", false),
+	  "log messages go to stderr instead of logfiles");
+ABSL_FLAG(bool, alsologtostderr, BoolFromEnv("GOOGLE_ALSOLOGTOSTDERR", false),
+	  "log messages go to stderr in addition to logfiles");
+
+ABSL_FLAG(bool, colorlogtostderr, false,
+	  "color messages logged to stderr (if supported by terminal)");
 #ifdef OS_LINUX
-GLOG_DEFINE_bool(drop_log_memory, true, "Drop in-memory buffers of log contents. "
+ABSL_FLAG(bool, drop_log_memory, true, "Drop in-memory buffers of log contents. "
                  "Logs can grow very quickly and they are rarely read before they "
                  "need to be evicted from memory. Instead, drop them from memory "
                  "as soon as they are flushed to disk.");
@@ -121,29 +123,29 @@ GLOG_DEFINE_bool(drop_log_memory, true, "Drop in-memory buffers of log contents.
 //
 // The default is ERROR instead of FATAL so that users can see problems
 // when they run a program without having to look in another file.
-DEFINE_int32(stderrthreshold,
-             GOOGLE_NAMESPACE::GLOG_ERROR,
-             "log messages at or above this level are copied to stderr in "
-             "addition to logfiles.  This flag obsoletes --alsologtostderr.");
+ABSL_FLAG(int32_t, stderrthreshold,
+	  GOOGLE_NAMESPACE::GLOG_ERROR,
+	  "log messages at or above this level are copied to stderr in "
+	  "addition to logfiles.  This flag obsoletes --alsologtostderr.");
 
-GLOG_DEFINE_string(alsologtoemail, "",
+ABSL_FLAG(string, alsologtoemail, "",
                    "log messages go to these email addresses "
                    "in addition to logfiles");
-GLOG_DEFINE_bool(log_prefix, true,
+ABSL_FLAG(bool, log_prefix, true,
                  "Prepend the log prefix to the start of each log line");
-GLOG_DEFINE_int32(minloglevel, 0, "Messages logged at a lower level than this don't "
+ABSL_FLAG(int32_t, minloglevel, 0, "Messages logged at a lower level than this don't "
                   "actually get logged anywhere");
-GLOG_DEFINE_int32(logbuflevel, 0,
+ABSL_FLAG(int32_t, logbuflevel, 0,
                   "Buffer log messages logged at this level or lower"
                   " (-1 means don't buffer; 0 means buffer INFO only;"
                   " ...)");
-GLOG_DEFINE_int32(logbufsecs, 30,
+ABSL_FLAG(int32_t, logbufsecs, 30,
                   "Buffer log messages for at most this many seconds");
-GLOG_DEFINE_int32(logemaillevel, 999,
+ABSL_FLAG(int32_t, logemaillevel, 999,
                   "Email log messages logged at this level or higher"
                   " (0 means email all; 3 means email FATAL only;"
                   " ...)");
-GLOG_DEFINE_string(logmailer, "/bin/mail",
+ABSL_FLAG(string, logmailer, "/bin/mail",
                    "Mailer used to send logging email");
 
 // Compute the default value for --log_dir
@@ -160,23 +162,23 @@ static const char* DefaultLogDir() {
   return "";
 }
 
-GLOG_DEFINE_int32(logfile_mode, 0664, "Log file mode/permissions.");
+ABSL_FLAG(int32_t, logfile_mode, 0664, "Log file mode/permissions.");
 
-GLOG_DEFINE_string(log_dir, DefaultLogDir(),
+ABSL_FLAG(string, log_dir, DefaultLogDir(),
                    "If specified, logfiles are written into this directory instead "
                    "of the default logging directory.");
-GLOG_DEFINE_string(log_link, "", "Put additional links to the log "
+ABSL_FLAG(string, log_link, "", "Put additional links to the log "
                    "files in this directory");
 
-GLOG_DEFINE_int32(max_log_size, 1800,
-                  "approx. maximum log file size (in MB). A value of 0 will "
-                  "be silently overridden to 1.");
+ABSL_FLAG(int32_t, max_log_size, 1800,
+	  "approx. maximum log file size (in MB). A value of 0 will "
+	  "be silently overridden to 1.");
 
-GLOG_DEFINE_bool(stop_logging_if_full_disk, false,
+ABSL_FLAG(bool, stop_logging_if_full_disk, false,
                  "Stop attempting to log to disk if the disk is full.");
 
-GLOG_DEFINE_string(log_backtrace_at, "",
-                   "Emit a backtrace when logging at file:linenum.");
+ABSL_FLAG(string, log_backtrace_at, "",
+	  "Emit a backtrace when logging at file:linenum.");
 
 // TODO(hamaji): consider windows
 #define PATH_SEPARATOR '/'
@@ -325,7 +327,7 @@ static const char* GetAnsiColorCode(GLogColor color) {
 
 // Safely get max_log_size, overriding to 1 if it somehow gets defined as 0
 static int32 MaxLogSize() {
-  return (FLAGS_max_log_size > 0 ? FLAGS_max_log_size : 1);
+  return (absl::GetFlag(FLAGS_max_log_size) > 0 ? absl::GetFlag(FLAGS_max_log_size) : 1);
 }
 
 // An arbitrary limit on the length of a single log message.  This
@@ -651,7 +653,7 @@ inline void LogDestination::SetStderrLogging(LogSeverity min_severity) {
   // Prevent any subtle race conditions by wrapping a mutex lock around
   // all this stuff.
   MutexLock l(&log_mutex);
-  FLAGS_stderrthreshold = min_severity;
+  absl::SetFlag(&FLAGS_stderrthreshold, min_severity);
 }
 
 inline void LogDestination::LogToStderr() {
@@ -676,7 +678,7 @@ inline void LogDestination::SetEmailLogging(LogSeverity min_severity,
 static void ColoredWriteToStderr(LogSeverity severity,
                                  const char* message, size_t len) {
   const GLogColor color =
-      (LogDestination::terminal_supports_color() && FLAGS_colorlogtostderr) ?
+    (LogDestination::terminal_supports_color() && absl::GetFlag(FLAGS_colorlogtostderr)) ?
       SeverityToColor(severity) : COLOR_DEFAULT;
 
   // Avoid using cerr from this module since we may get called during
@@ -718,7 +720,7 @@ static void WriteToStderr(const char* message, size_t len) {
 
 inline void LogDestination::MaybeLogToStderr(LogSeverity severity,
 					     const char* message, size_t len) {
-  if ((severity >= FLAGS_stderrthreshold) || FLAGS_alsologtostderr) {
+  if ((severity >= absl::GetFlag(FLAGS_stderrthreshold)) || absl::GetFlag(FLAGS_alsologtostderr)) {
     ColoredWriteToStderr(severity, message, len);
 #ifdef OS_WINDOWS
     // On Windows, also output to the debugger
@@ -731,8 +733,8 @@ inline void LogDestination::MaybeLogToStderr(LogSeverity severity,
 inline void LogDestination::MaybeLogToEmail(LogSeverity severity,
 					    const char* message, size_t len) {
   if (severity >= email_logging_severity_ ||
-      severity >= FLAGS_logemaillevel) {
-    string to(FLAGS_alsologtoemail);
+      severity >= absl::GetFlag(FLAGS_logemaillevel)) {
+    string to(absl::GetFlag(FLAGS_alsologtoemail));
     if (!addresses_.empty()) {
       if (!to.empty()) {
         to += ",";
@@ -758,7 +760,7 @@ inline void LogDestination::MaybeLogToLogfile(LogSeverity severity,
                                               time_t timestamp,
 					      const char* message,
 					      size_t len) {
-  const bool should_flush = severity > FLAGS_logbuflevel;
+  const bool should_flush = severity > absl::GetFlag(FLAGS_logbuflevel);
   LogDestination* destination = log_destination(severity);
   destination->logger_->Write(should_flush, timestamp, message, len);
 }
@@ -768,7 +770,7 @@ inline void LogDestination::LogToAllLogfiles(LogSeverity severity,
                                              const char* message,
                                              size_t len) {
 
-  if ( FLAGS_logtostderr ) {           // global flag: never log to file
+  if ( absl::GetFlag(FLAGS_logtostderr) ) {           // global flag: never log to file
     ColoredWriteToStderr(severity, message, len);
   } else {
     for (int i = severity; i >= 0; --i)
@@ -897,7 +899,7 @@ void LogFileObject::FlushUnlocked(){
     bytes_since_flush_ = 0;
   }
   // Figure out when we are due for another flush.
-  const int64 next = (FLAGS_logbufsecs
+  const int64 next = (absl::GetFlag(FLAGS_logbufsecs)
                       * static_cast<int64>(1000000));  // in usec
   next_flush_time_ = CycleClock_Now() + UsecToCycles(next);
 }
@@ -906,7 +908,7 @@ bool LogFileObject::CreateLogfile(const string& time_pid_string) {
   string string_filename = base_filename_+filename_extension_+
                            time_pid_string;
   const char* filename = string_filename.c_str();
-  int fd = open(filename, O_WRONLY | O_CREAT | O_EXCL, FLAGS_logfile_mode);
+  int fd = open(filename, O_WRONLY | O_CREAT | O_EXCL, absl::GetFlag(FLAGS_logfile_mode));
   if (fd == -1) return false;
 #ifdef HAVE_FCNTL
   // Mark the file close-on-exec. We don't really care if this fails
@@ -948,8 +950,8 @@ bool LogFileObject::CreateLogfile(const string& time_pid_string) {
 
     // Make an additional link to the log file in a place specified by
     // FLAGS_log_link, if indicated
-    if (!FLAGS_log_link.empty()) {
-      linkpath = FLAGS_log_link + "/" + linkname;
+    if (!absl::GetFlag(FLAGS_log_link).empty()) {
+      linkpath = absl::GetFlag(FLAGS_log_link) + "/" + linkname;
       unlink(linkpath.c_str());                  // delete old one if it exists
       if (symlink(filename, linkpath.c_str()) != 0) {
         // silently ignore failures
@@ -1095,7 +1097,7 @@ void LogFileObject::Write(bool force_flush,
     // greater than 4096, thereby indicating an error.
     errno = 0;
     fwrite(message, 1, message_len, file_);
-    if ( FLAGS_stop_logging_if_full_disk &&
+    if ( absl::GetFlag(FLAGS_stop_logging_if_full_disk) &&
          errno == ENOSPC ) {  // disk full, stop writing to disk
       stop_writing = true;  // until the disk is
       return;
@@ -1110,14 +1112,14 @@ void LogFileObject::Write(bool force_flush,
   }
 
   // See important msgs *now*.  Also, flush logs at least every 10^6 chars,
-  // or every "FLAGS_logbufsecs" seconds.
+  // or every "absl::GetFlag(FLAGS_logbufsecs" seconds.
   if ( force_flush ||
        (bytes_since_flush_ >= 1000000) ||
        (CycleClock_Now() >= next_flush_time_) ) {
     FlushUnlocked();
 #ifdef OS_LINUX
     // Only consider files >= 3MiB
-    if (FLAGS_drop_log_memory && file_length_ >= (3 << 20)) {
+    if (absl::GetFlag(FLAGS_drop_log_memory) && file_length_ >= (3 << 20)) {
       // Don't evict the most recent 1-2MiB so as not to impact a tailer
       // of the log file and to avoid page rounding issue on linux < 4.7
       uint32 total_drop_length = (file_length_ & ~((1 << 20) - 1)) - (1 << 20);
@@ -1277,7 +1279,7 @@ void LogMessage::Init(const char* file,
   //    I1018 160715 f5d4fbb0 logging.cc:1153]
   //    (log level, GMT month, date, time, thread_id, file basename, line)
   // We exclude the thread_id for the default thread.
-  if (FLAGS_log_prefix && (line != kNoLogPrefix)) {
+  if (absl::GetFlag(FLAGS_log_prefix) && (line != kNoLogPrefix)) {
     stream() << LogSeverityNames[severity][0]
              << setw(2) << 1+data_->tm_time_.tm_mon
              << setw(2) << data_->tm_time_.tm_mday
@@ -1294,11 +1296,11 @@ void LogMessage::Init(const char* file,
   }
   data_->num_prefix_chars_ = data_->stream_.pcount();
 
-  if (!FLAGS_log_backtrace_at.empty()) {
+  if (!absl::GetFlag(FLAGS_log_backtrace_at).empty()) {
     char fileline[128];
     snprintf(fileline, sizeof(fileline), "%s:%d", data_->basename_, line);
 #ifdef HAVE_STACKTRACE
-    if (!strcmp(FLAGS_log_backtrace_at.c_str(), fileline)) {
+    if (!strcmp(absl::GetFlag(FLAGS_log_backtrace_at).c_str(), fileline)) {
       string stacktrace;
       DumpStackTraceToString(&stacktrace);
       stream() << " (stacktrace:\n" << stacktrace << ") ";
@@ -1333,7 +1335,7 @@ ostream& LogMessage::stream() {
 // Flush buffered message, called by the destructor, or any other function
 // that needs to synchronize the log.
 void LogMessage::Flush() {
-  if (data_->has_been_flushed_ || data_->severity_ < FLAGS_minloglevel)
+  if (data_->has_been_flushed_ || data_->severity_ < absl::GetFlag(FLAGS_minloglevel))
     return;
 
   data_->num_chars_to_log_ = data_->stream_.pcount();
@@ -1393,7 +1395,7 @@ static char fatal_message[256];
 void ReprintFatalMessage() {
   if (fatal_message[0]) {
     const int n = strlen(fatal_message);
-    if (!FLAGS_logtostderr) {
+    if (!absl::GetFlag(FLAGS_logtostderr)) {
       // Also write to stderr (don't color to avoid terminal checks)
       WriteToStderr(fatal_message, n);
     }
@@ -1422,7 +1424,7 @@ void LogMessage::SendToLog() EXCLUSIVE_LOCKS_REQUIRED(log_mutex) {
   // global flag: never log to file if set.  Also -- don't log to a
   // file if we haven't parsed the command line flags to get the
   // program name.
-  if (FLAGS_logtostderr || !IsGoogleLoggingInitialized()) {
+  if (absl::GetFlag(FLAGS_logtostderr) || !IsGoogleLoggingInitialized()) {
     ColoredWriteToStderr(data_->severity_,
                          data_->message_text_, data_->num_chars_to_log_);
 
@@ -1471,7 +1473,7 @@ void LogMessage::SendToLog() EXCLUSIVE_LOCKS_REQUIRED(log_mutex) {
       fatal_time = data_->timestamp_;
     }
 
-    if (!FLAGS_logtostderr) {
+    if (!absl::GetFlag(FLAGS_logtostderr)) {
       for (int i = 0; i < NUM_SEVERITIES; ++i) {
         if ( LogDestination::log_destinations_[i] )
           LogDestination::log_destinations_[i]->logger_->Write(true, 0, "", 0);
@@ -1502,7 +1504,7 @@ void LogMessage::RecordCrashReason(
                     fatal_msg_data_exclusive.num_prefix_chars_;
 #ifdef HAVE_STACKTRACE
   // Retrieve the stack trace, omitting the logging frames that got us here.
-  reason->depth = GetStackTrace(reason->stack, ARRAYSIZE(reason->stack), 4);
+  reason->depth = absl::GetStackTrace(reason->stack, ARRAYSIZE(reason->stack), 4);
 #else
   reason->depth = 0;
 #endif
@@ -1802,7 +1804,7 @@ static bool SendEmailInternal(const char*dest, const char *subject,
     }
 
     string cmd =
-        FLAGS_logmailer + " -s" +
+      absl::GetFlag(FLAGS_logmailer) + " -s" +
         ShellEscape(subject) + " " + ShellEscape(dest);
     VLOG(4) << "Mailing command: " << cmd;
 
@@ -1893,9 +1895,9 @@ const vector<string>& GetLoggingDirectories() {
   if (logging_directories_list == NULL) {
     logging_directories_list = new vector<string>;
 
-    if ( !FLAGS_log_dir.empty() ) {
+    if ( !absl::GetFlag(FLAGS_log_dir).empty() ) {
       // A dir was specified, we should use it
-      logging_directories_list->push_back(FLAGS_log_dir.c_str());
+      logging_directories_list->push_back(absl::GetFlag(FLAGS_log_dir).c_str());
     } else {
       GetTempDirectories(logging_directories_list);
 #ifdef OS_WINDOWS

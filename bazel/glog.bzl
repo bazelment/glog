@@ -7,7 +7,7 @@
 #       https://github.com/google/glog/issues/61
 #       https://github.com/google/glog/files/393474/BUILD.txt
 
-def glog_library(namespace='google', with_gflags=1, **kwargs):
+def glog_library(namespace='google', **kwargs):
     if native.repository_name() != '@':
         gendir = '$(GENDIR)/external/' + native.repository_name().lstrip('@')
     else:
@@ -18,23 +18,9 @@ def glog_library(namespace='google', with_gflags=1, **kwargs):
         visibility = [ '//visibility:public' ],
         srcs = [
             ':config_h',
-            'src/base/commandlineflags.h',
             'src/base/googleinit.h',
-            'src/base/mutex.h',
-            'src/demangle.cc',
-            'src/demangle.h',
             'src/logging.cc',
-            'src/raw_logging.cc',
-            'src/signalhandler.cc',
-            'src/stacktrace.h',
-            'src/stacktrace_generic-inl.h',
-            'src/stacktrace_libunwind-inl.h',
-            'src/stacktrace_powerpc-inl.h',
-            'src/stacktrace_windows-inl.h',
-            'src/stacktrace_x86-inl.h',
-            'src/stacktrace_x86_64-inl.h',
-            'src/symbolize.cc',
-            'src/symbolize.h',
+            # 'src/raw_logging.cc',
             'src/utilities.cc',
             'src/utilities.h',
             'src/vlog_is_on.cc',
@@ -58,6 +44,7 @@ def glog_library(namespace='google', with_gflags=1, **kwargs):
             "-DGOOGLE_NAMESPACE='%s'" % namespace,
             # Allows src/base/mutex.h to include pthread.h.
             '-DHAVE_PTHREAD',
+            '-DHAVE_STACKTRACE',
             # Allows src/logging.cc to determine the host name.
             '-DHAVE_SYS_UTSNAME_H',
             # For src/utilities.cc.
@@ -70,9 +57,9 @@ def glog_library(namespace='google', with_gflags=1, **kwargs):
             # For logging.cc.
             '-DHAVE_PREAD',
             '-DHAVE___ATTRIBUTE__',
-
             # Include generated header files.
             '-I%s/glog_internal' % gendir,
+            '-include config.h',
         ] + select({
             # For stacktrace.
             '@bazel_tools//src/conditions:darwin': [
@@ -82,13 +69,12 @@ def glog_library(namespace='google', with_gflags=1, **kwargs):
             '//conditions:default': [
                 '-DHAVE_UNWIND_H',
             ],
-        }) + ([
-            # Use gflags to parse CLI arguments.
-            '-DHAVE_LIB_GFLAGS',
-        ] if with_gflags else []),
+        }),
         deps = [
-            '@com_github_gflags_gflags//:gflags',
-        ] if with_gflags else [],
+            '@com_google_absl//absl/synchronization',
+            '@com_google_absl//absl/debugging:stacktrace',
+            '@com_google_absl//absl/flags:flag',
+        ],
         **kwargs
     )
 
@@ -115,7 +101,7 @@ sed -e 's/@ac_cv_cxx_using_operator@/1/g' \
     -e 's/@ac_cv___attribute___noreturn@/__attribute__((noreturn))/g' \
     -e 's/@ac_cv___attribute___printf_4_5@/__attribute__((__format__ (__printf__, 4, 5)))/g'
 EOF
-'''.format(int(with_gflags)),
+'''.format(int(1)),
     )
 
     native.genrule(

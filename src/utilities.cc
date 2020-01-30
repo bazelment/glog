@@ -54,6 +54,8 @@
 # include <pwd.h>
 #endif
 
+
+
 #include "base/googleinit.h"
 
 using std::string;
@@ -68,12 +70,12 @@ _END_GOOGLE_NAMESPACE_
 // The following APIs are all internal.
 #ifdef HAVE_STACKTRACE
 
-#include "stacktrace.h"
-#include "symbolize.h"
-#include "base/commandlineflags.h"
+#include "absl/debugging/stacktrace.h"
+#include "absl/debugging/symbolize.h"
+#include "absl/flags/flag.h"
 
-GLOG_DEFINE_bool(symbolize_stacktrace, true,
-                 "Symbolize the stack trace in the tombstone");
+ABSL_FLAG(bool, symbolize_stacktrace, true,
+	  "Symbolize the stack trace in the tombstone");
 
 _START_GOOGLE_NAMESPACE_
 
@@ -125,7 +127,7 @@ static void DumpPC(DebugWriter *writerfn, void *arg, void *pc,
 static void DumpStackTrace(int skip_count, DebugWriter *writerfn, void *arg) {
   // Print stack trace
   void* stack[32];
-  int depth = GetStackTrace(stack, ARRAYSIZE(stack), skip_count+1);
+  int depth = absl::GetStackTrace(stack, ARRAYSIZE(stack), skip_count+1);
   for (int i = 0; i < depth; i++) {
 #if defined(HAVE_SYMBOLIZE)
     if (FLAGS_symbolize_stacktrace) {
@@ -139,6 +141,7 @@ static void DumpStackTrace(int skip_count, DebugWriter *writerfn, void *arg) {
   }
 }
 
+#if 0
 static void DumpStackTraceAndExit() {
   DumpStackTrace(1, DebugWriteToStderr, NULL);
 
@@ -159,6 +162,7 @@ static void DumpStackTraceAndExit() {
 
   abort();
 }
+#endif
 
 _END_GOOGLE_NAMESPACE_
 
@@ -352,7 +356,7 @@ void InitGoogleLoggingUtilities(const char* argv0) {
   g_program_invocation_short_name = slash ? slash + 1 : argv0;
   g_main_thread_id = pthread_self();
 
-#ifdef HAVE_STACKTRACE
+#ifdef HAVE_STACKTRACE_DISABLED
   InstallFailureFunction(&DumpStackTraceAndExit);
 #endif
 }
@@ -369,16 +373,3 @@ void ShutdownGoogleLoggingUtilities() {
 }  // namespace glog_internal_namespace_
 
 _END_GOOGLE_NAMESPACE_
-
-// Make an implementation of stacktrace compiled.
-#ifdef STACKTRACE_H
-# include STACKTRACE_H
-# if 0
-// For include scanners which can't handle macro expansions.
-#  include "stacktrace_libunwind-inl.h"
-#  include "stacktrace_x86-inl.h"
-#  include "stacktrace_x86_64-inl.h"
-#  include "stacktrace_powerpc-inl.h"
-#  include "stacktrace_generic-inl.h"
-# endif
-#endif
