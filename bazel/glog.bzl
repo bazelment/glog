@@ -20,7 +20,6 @@ def glog_library(namespace='google', **kwargs):
             ':config_h',
             'src/base/googleinit.h',
             'src/logging.cc',
-            # 'src/raw_logging.cc',
             'src/utilities.cc',
             'src/utilities.h',
             'src/vlog_is_on.cc',
